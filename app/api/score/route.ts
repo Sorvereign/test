@@ -1,0 +1,174 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { scoreCandidates } from '@/app/lib/llm/scoring'
+import { getCacheHybrid, setCacheHybrid } from '@/app/lib/utils/redis-cache'
+import * as XLSX from 'xlsx'
+import path from 'path'
+import fs from 'fs'
+import crypto from 'crypto'
+import { Candidate, CandidateResponse } from '@/app/types'
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '4mb'
+    },
+    responseLimit: false
+  },
+}
+
+const requestSchema = z.object({
+  jobDescription: z.string().min(10).max(200),
+})
+
+function generateJobDescriptionHash(jobDescription: string): string {
+  return crypto.createHash('md5').update(jobDescription).digest('hex').substring(0, 10);
+}
+
+function loadExcelCandidates() {
+  try {
+    const filePath = path.join(process.cwd(), 'app', 'data', 'candidates.xlsx')
+    
+    console.log('Attempting to load file from:', filePath)
+    console.log('Current working directory:', process.cwd())
+    console.log('Files in current directory:', fs.readdirSync(process.cwd()))
+    
+    if (!fs.existsSync(filePath)) {
+      console.error('Excel file not found:', filePath)
+      
+      const alternativePaths = [
+        path.join(process.cwd(), 'data', 'candidates.xlsx'),
+        path.join(process.cwd(), 'candidates.xlsx'),
+        './app/data/candidates.xlsx',
+        './data/candidates.xlsx'
+      ]
+      
+      for (const altPath of alternativePaths) {
+        console.log('Trying alternative path:', altPath)
+        if (fs.existsSync(altPath)) {
+          const workbook = XLSX.readFile(altPath)
+          const firstSheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[firstSheetName]
+          
+          const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
+          
+          return jsonData.map((row, index) => {
+            const skills = (row.Habilidades || row.Skills || "")
+              .toString()
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+            
+            return {
+              id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
+              name: row.Nombre || row.Name || `Candidate ${index + 1}`,
+              skills,
+              experience: Number(row.Experiencia || row.Experience || 0),
+              education: row.Educacion || row.Educación || row.Education || "",
+              email: row.Email || row.Correo || ""
+            }
+          })
+        }
+      }
+      
+      return []
+    }
+    
+    const workbook = XLSX.readFile(filePath)
+    const firstSheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[firstSheetName]
+    
+    const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
+    
+    return jsonData.map((row, index) => {
+      const skills = (row.Habilidades || row.Skills || "")
+        .toString()
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+      
+      return {
+        id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
+        name: row.Nombre || row.Name || `Candidate ${index + 1}`,
+        skills,
+        experience: Number(row.Experiencia || row.Experience || 0),
+        education: row.Educacion || row.Educación || row.Education || "",
+        email: row.Email || row.Correo || ""
+      }
+    })
+  } catch (error) {
+    console.error('Error loading Excel file:', error)
+    return []
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    
+    const { jobDescription } = requestSchema.parse(body)
+    
+    const jobHash = generateJobDescriptionHash(jobDescription);
+    const candidateHash = 'default'; 
+    const cacheKey = `job-${jobHash}-${candidateHash}`;
+    
+    const cached = await getCacheHybrid(cacheKey)
+    if (cached) {
+      console.log('Cache hit:', cacheKey)
+      return NextResponse.json(cached)
+    }
+    
+    let candidates: Candidate[] = loadExcelCandidates();
+    
+    if (candidates.length === 0) {
+      candidates = [
+        { 
+          id: "C001", 
+          name: "John Doe", 
+          skills: ["React", "TypeScript", "NextJS", "TailwindCSS"],
+          experience: 5.2,
+          education: "Computer Science Engineer, National University",
+          email: "john.doe@example.com"
+        },
+        { 
+          id: "C002", 
+          name: "Jane Smith", 
+          skills: ["UI/UX", "Figma", "HTML", "CSS", "JavaScript"],
+          experience: 3.5,
+          education: "UX/UI Designer, Google Certification",
+          email: "jane.smith@example.com"
+        },
+        { 
+          id: "C003", 
+          name: "Michael Johnson", 
+          skills: ["Python", "Django", "SQL", "React", "AWS"],
+          experience: 7.8,
+          education: "Master in Data Science, Technology University",
+          email: "michael.johnson@example.com"
+        }
+      ]
+    }    
+    
+    const batchSize = 5
+    const batches = Array.from(
+      { length: Math.ceil(candidates.length / batchSize) },
+      (_, i) => candidates.slice(i * batchSize, (i + 1) * batchSize)
+    )
+    
+    const results = []
+    for (const batch of batches) {
+      const scored = await scoreCandidates(jobDescription, batch as Candidate[])
+      results.push(...scored)
+    }
+    
+    const sorted = results.sort((a, b) => b.score - a.score).slice(0, 30)
+    
+    await setCacheHybrid(cacheKey, sorted, 600)
+    
+    return NextResponse.json(sorted)
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    )
+  }
+} 
