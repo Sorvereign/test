@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { UploadCloud, Download } from "lucide-react"
+import { upload } from '@vercel/blob/client'
 import * as XLSX from "xlsx"
 import { Candidate, CandidateResponse } from "../types"
 
@@ -61,37 +62,14 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
     try {
       setIsUploading(true)
       
-      // Check file size before upload (10MB limit)
-      const maxSize = 10 * 1024 * 1024
-      if (file.size > maxSize) {
-        setError(`File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB. Maximum allowed: 10MB.`)
-        return
-      }
-      
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      const response = await fetch('/api/upload-candidates', {
-        method: 'POST',
-        body: formData
+      const result = await upload(`candidates/${file.name}`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload-candidates',
       })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        if (response.status === 413) {
-          setError('File too large. Please use a file smaller than 10MB.')
-        } else {
-          throw new Error(errorData.error || 'Upload failed')
-        }
-        return
-      }
-      
-      const result = await response.json()
       console.log('File uploaded to blob storage:', result.url)
       
     } catch (err) {
       console.error("Error uploading to blob storage:", err)
-      setError("Error uploading to cloud storage. File was processed locally.")
     } finally {
       setIsUploading(false)
     }
