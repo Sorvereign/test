@@ -1,7 +1,7 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody
 
   try {
@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
       request,
       onBeforeGenerateToken: async (pathname) => {
         // Generate a client token for the browser to upload the file
-        // Validate file type based on pathname
+        
+        // Validate that it's an Excel file based on the pathname
         const isExcel = pathname.endsWith('.xlsx') || pathname.endsWith('.xls')
         
         if (!isExcel) {
@@ -33,24 +34,25 @@ export async function POST(request: NextRequest) {
         // Get notified of client upload completion
         console.log('Candidates file upload completed:', {
           url: blob.url,
-          pathname: blob.pathname,
-          tokenPayload
+          pathname: blob.pathname
         })
 
         try {
-          // Here you could update a database or perform other actions
-          // For now, we just log the successful upload
-          console.log('File successfully uploaded to blob storage:', blob.url)
+          // You could run additional logic here
+          // For example: validate the Excel content, send notifications, etc.
+          if (tokenPayload) {
+            const payload = JSON.parse(tokenPayload)
+            console.log('Upload metadata:', payload)
+          }
         } catch (error) {
           console.error('Error processing upload completion:', error)
-          throw new Error('Could not process file upload')
         }
       },
     })
 
     return NextResponse.json(jsonResponse)
   } catch (error) {
-    console.error('Error handling upload:', error)
+    console.error('Error in client upload handler:', error)
     return NextResponse.json(
       { error: (error as Error).message },
       { status: 400 }

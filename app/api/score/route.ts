@@ -8,9 +8,6 @@ import fs from 'fs'
 import crypto from 'crypto'
 import { list } from '@vercel/blob'
 import { Candidate, CandidateResponse } from '@/app/types'
-
-export const maxDuration = 60
-
 export const config = {
   api: {
     bodyParser: {
@@ -57,9 +54,9 @@ async function loadCandidatesFromBlob(): Promise<Candidate[]> {
     const firstSheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[firstSheetName]
     
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 100 }) as CandidateResponse[]
+    const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
     
-    const candidates = jsonData.slice(0, 200).map((row, index) => {
+    const candidates = jsonData.map((row, index) => {
       const skills = (row.Habilidades || row.Skills || "")
         .toString()
         .split(",")
@@ -159,9 +156,6 @@ async function loadCandidates(): Promise<Candidate[]> {
 }
 
 export async function POST(req: NextRequest) {
-  const startTime = Date.now()
-  const MAX_PROCESSING_TIME = 50000
-  
   try {
     const body = await req.json()
     
@@ -208,10 +202,7 @@ export async function POST(req: NextRequest) {
       ]
     }    
     
-    const maxCandidates = 50
-    candidates = candidates.slice(0, maxCandidates)
-    
-    const batchSize = 3
+    const batchSize = 5
     const batches = Array.from(
       { length: Math.ceil(candidates.length / batchSize) },
       (_, i) => candidates.slice(i * batchSize, (i + 1) * batchSize)
@@ -219,33 +210,16 @@ export async function POST(req: NextRequest) {
     
     const results = []
     for (const batch of batches) {
-      if (Date.now() - startTime > MAX_PROCESSING_TIME) {
-        console.log('Timeout approaching, stopping processing')
-        break
-      }
-      
-      try {
-        const scored = await scoreCandidates(jobDescription, batch as Candidate[])
-        results.push(...scored)
-      } catch (error) {
-        console.error('Error scoring batch:', error)
-        continue
-      }
-    }
-    
-    if (results.length === 0) {
-      return NextResponse.json([])
+      const scored = await scoreCandidates(jobDescription, batch as Candidate[])
+      results.push(...scored)
     }
     
     const sorted = results.sort((a, b) => b.score - a.score).slice(0, 30)
     
-    await setCacheHybrid(cacheKey, sorted, 600).catch(err => 
-      console.error('Cache set error:', err)
-    )
+    await setCacheHybrid(cacheKey, sorted, 600)
     
     return NextResponse.json(sorted)
   } catch (error) {
-    console.error('API Error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

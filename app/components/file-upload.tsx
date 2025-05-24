@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { UploadCloud, Download } from "lucide-react"
-import { upload } from '@vercel/blob/client'
 import * as XLSX from "xlsx"
+import { upload } from '@vercel/blob/client'
 import { Candidate, CandidateResponse } from "../types"
 
 interface FileUploadProps {
@@ -62,14 +62,18 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
     try {
       setIsUploading(true)
       
-      const result = await upload(`candidates/${file.name}`, file, {
+      // Use Vercel's client upload for files of any size
+      const blob = await upload(`candidates/${file.name}`, file, {
         access: 'public',
         handleUploadUrl: '/api/upload-candidates',
       })
-      console.log('File uploaded to blob storage:', result.url)
+      
+      console.log('File uploaded to blob storage:', blob.url)
       
     } catch (err) {
       console.error("Error uploading to blob storage:", err)
+      // Show error to user for blob upload failures
+      setError(`Upload to cloud failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setIsUploading(false)
     }
