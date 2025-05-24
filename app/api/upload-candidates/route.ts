@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
+        // Generate a client token for the browser to upload the file
+        // Validate file type based on pathname
         const isExcel = pathname.endsWith('.xlsx') || pathname.endsWith('.xls')
         
         if (!isExcel) {
@@ -28,6 +30,7 @@ export async function POST(request: NextRequest) {
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
+        // Get notified of client upload completion
         console.log('Candidates file upload completed:', {
           url: blob.url,
           pathname: blob.pathname,
@@ -35,6 +38,8 @@ export async function POST(request: NextRequest) {
         })
 
         try {
+          // Here you could update a database or perform other actions
+          // For now, we just log the successful upload
           console.log('File successfully uploaded to blob storage:', blob.url)
         } catch (error) {
           console.error('Error processing upload completion:', error)
