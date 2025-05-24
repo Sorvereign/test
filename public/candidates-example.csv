@@ -1,9 +1,0 @@
-ID,Nombre,Habilidades,Experiencia,Educacion,Email
-C001,Juan Pérez,"React, TypeScript, NextJS, TailwindCSS",5.2,"Ingeniero en Sistemas, Universidad Nacional",juan.perez@example.com
-C002,María Rodríguez,"UI/UX, Figma, HTML, CSS, JavaScript",3.5,"Diseñadora UX/UI, Certificación Google",maria.rodriguez@example.com
-C003,Carlos Gómez,"Python, Django, SQL, React, AWS",7.8,"Máster en Ciencia de Datos, Universidad Tecnológica",carlos.gomez@example.com
-C004,Ana López,"React, Redux, Node.js, MongoDB, Express",4.3,"Bootcamp Desarrollo Web Full Stack, Certificación AWS",ana.lopez@example.com
-C005,Pedro Martínez,"Vue.js, JavaScript, CSS, HTML, Firebase",2.9,"Ingeniero en Informática, Curso Avanzado Frontend",pedro.martinez@example.com
-C006,Laura Fernández,"Angular, TypeScript, .NET, C#, SQL Server",6.1,"Ingeniera de Software, Certificación Microsoft",laura.fernandez@example.com
-C007,Miguel Sánchez,"Java, Spring Boot, React, MySQL, Docker",8.2,"Máster en Ingeniería de Software, Universidad Politécnica",miguel.sanchez@example.com
-C008,Sofia Díaz,"Python, React, Flask, PostgreSQL, Docker",3.8,"Ingeniera en Sistemas, Bootcamp Data Science",sofia.diaz@example.com 

@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx'
 import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
+import { list } from '@vercel/blob'
 import { Candidate, CandidateResponse } from '@/app/types'
 export const config = {
   api: {
@@ -24,7 +25,64 @@ function generateJobDescriptionHash(jobDescription: string): string {
   return crypto.createHash('md5').update(jobDescription).digest('hex').substring(0, 10);
 }
 
-function loadExcelCandidates() {
+async function loadCandidatesFromBlob(): Promise<Candidate[]> {
+  try {
+    const { blobs } = await list({
+      prefix: 'candidates/',
+      limit: 1000,
+    })
+    
+    const excelBlobs = blobs.filter(blob => 
+      blob.pathname.endsWith('.xlsx') || blob.pathname.endsWith('.xls')
+    )
+    
+    if (excelBlobs.length === 0) {
+      console.log('No Excel files found in blob storage')
+      return []
+    }
+
+    const latestBlob = excelBlobs[0]
+    console.log('Loading candidates from blob:', latestBlob.url)
+
+    const response = await fetch(latestBlob.url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.statusText}`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer)
+    const firstSheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[firstSheetName]
+    
+    const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
+    
+    const candidates = jsonData.map((row, index) => {
+      const skills = (row.Habilidades || row.Skills || "")
+        .toString()
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+      
+      return {
+        id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
+        name: row.Nombre || row.Name || `Candidate ${index + 1}`,
+        skills,
+        experience: Number(row.Experiencia || row.Experience || 0),
+        education: row.Educacion || row.Educación || row.Education || "",
+        email: row.Email || row.Correo || ""
+      }
+    })
+    
+    console.log(`Successfully loaded ${candidates.length} candidates from blob storage`)
+    return candidates
+
+  } catch (error) {
+    console.error('Error loading candidates from blob storage:', error)
+    return []
+  }
+}
+
+function loadCandidatesFromLocal(): Candidate[] {
   try {
     const possiblePaths = [
       './public/candidates.xlsx',
@@ -37,7 +95,6 @@ function loadExcelCandidates() {
       path.resolve(process.cwd(), 'data/candidates.xlsx')
     ]
     
-    console.log('Attempting to load Excel file...')
     console.log('Working directory:', process.cwd())
     
     for (const filePath of possiblePaths) {
@@ -69,7 +126,7 @@ function loadExcelCandidates() {
             }
           })
           
-          console.log(`Successfully loaded ${candidates.length} candidates from Excel file`)
+          console.log(`Successfully loaded ${candidates.length} candidates from local file`)
           return candidates
         }
       } catch (pathError) {
@@ -78,13 +135,24 @@ function loadExcelCandidates() {
       }
     }
     
-    console.error('Excel file not found in any of the attempted paths:', possiblePaths)
+    console.error('Excel file not found in any of the attempted local paths')
     return []
     
   } catch (error) {
-    console.error('Error loading Excel file:', error)
+    console.error('Error loading Excel file from local paths:', error)
     return []
   }
+}
+
+async function loadCandidates(): Promise<Candidate[]> {
+  let candidates = await loadCandidatesFromBlob()
+  
+  if (candidates.length === 0) {
+    console.log('No candidates found in blob storage, trying local files...')
+    candidates = loadCandidatesFromLocal()
+  }
+  
+  return candidates
 }
 
 export async function POST(req: NextRequest) {
@@ -103,7 +171,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(cached)
     }
     
-    let candidates: Candidate[] = loadExcelCandidates();
+    let candidates: Candidate[] = await loadCandidates();
     
     if (candidates.length === 0) {
       candidates = [

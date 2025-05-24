@@ -17,6 +17,7 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
   const [fileName, setFileName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   const processExcel = async (file: File) => {
     try {
@@ -27,7 +28,7 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
       const jsonData = XLSX.utils.sheet_to_json(sheet) as CandidateResponse[]
       
       const candidates = jsonData.map((row, index) => {
-        const skills = (row.Skills || "")
+        const skills = (row.Skills || row.Habilidades || "")
           .toString()
           .split(",")
           .map((s: string) => s.trim())
@@ -56,7 +57,34 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadToBlob = async (file: File) => {
+    try {
+      setIsUploading(true)
+      
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const response = await fetch('/api/upload-candidates', {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Upload failed')
+      }
+      
+      const result = await response.json()
+      console.log('File uploaded to blob storage:', result.url)
+      
+    } catch (err) {
+      console.error("Error uploading to blob storage:", err)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
@@ -72,7 +100,10 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
     }
 
     setFileName(file.name)
-    processExcel(file)
+    
+    await processExcel(file)
+    
+    uploadToBlob(file)
   }
 
   const downloadTemplate = async () => {
@@ -126,21 +157,28 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileChange}
-            disabled={isLoading}
+            disabled={isLoading || isUploading}
             className="flex-1"
           />
-          <Button variant="outline" disabled={isLoading} asChild>
+          <Button variant="outline" disabled={isLoading || isUploading} asChild>
             <label htmlFor="candidates-file" className="cursor-pointer flex items-center gap-2">
               <UploadCloud className="h-4 w-4" />
-              Select
+              {isUploading ? 'Uploading...' : 'Select'}
             </label>
           </Button>
         </div>
         
         {fileName && (
-          <p className="text-sm text-muted-foreground mt-1">
-            File loaded: {fileName}
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              File loaded: {fileName}
+            </p>
+            {isUploading && (
+              <p className="text-sm text-blue-600">
+                📤 Uploading to cloud storage...
+              </p>
+            )}
+          </div>
         )}
         {error && (
           <p className="text-sm text-red-500 mt-1">
@@ -158,6 +196,9 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
             <li>Education - Academic background</li>
             <li>Email - Email address (optional)</li>
           </ul>
+          <p className="mt-2 text-xs text-blue-600">
+            💡 Files are automatically saved to cloud storage for future use
+          </p>
         </div>
       </div>
     </div>
