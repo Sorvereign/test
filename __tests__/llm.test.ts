@@ -1,11 +1,6 @@
-/**
- * Unit tests for LLM scoring logic as specified in the challenge
- */
-
 import { scoreCandidates } from '@/app/lib/llm/scoring'
 import { Candidate } from '@/app/types'
 
-// Mock OpenAI
 jest.mock('openai', () => {
   const mockCreate = jest.fn()
   return {

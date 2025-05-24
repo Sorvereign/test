@@ -1,10 +1,5 @@
-/**
- * Unit tests for API route as specified in the challenge
- */
-
 import { z } from 'zod'
 
-// Mock Next.js environment
 Object.defineProperty(global, 'Request', {
   value: class MockRequest {
     url: string
@@ -24,7 +19,6 @@ Object.defineProperty(global, 'Request', {
   }
 })
 
-// Mock the scoring function
 jest.mock('@/app/lib/llm/scoring', () => ({
   scoreCandidates: jest.fn().mockResolvedValue([
     {
@@ -39,13 +33,11 @@ jest.mock('@/app/lib/llm/scoring', () => ({
   ])
 }))
 
-// Mock Redis cache
 jest.mock('@/app/lib/utils/redis-cache', () => ({
   getCacheHybrid: jest.fn().mockResolvedValue(null),
   setCacheHybrid: jest.fn().mockResolvedValue(true)
 }))
 
-// Mock file system for Excel loading
 jest.mock('fs', () => ({
   existsSync: jest.fn().mockReturnValue(false),
   readdirSync: jest.fn().mockReturnValue([])

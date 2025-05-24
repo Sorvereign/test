@@ -44,37 +44,60 @@ async function loadCandidatesFromBlob(): Promise<Candidate[]> {
     const latestBlob = excelBlobs[0]
     console.log('Loading candidates from blob:', latestBlob.url)
 
-    const response = await fetch(latestBlob.url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch file: ${response.statusText}`)
-    }
-
-    const arrayBuffer = await response.arrayBuffer()
-    const workbook = XLSX.read(arrayBuffer)
-    const firstSheetName = workbook.SheetNames[0]
-    const worksheet = workbook.Sheets[firstSheetName]
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
     
-    const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
-    
-    const candidates = jsonData.map((row, index) => {
-      const skills = (row.Habilidades || row.Skills || "")
-        .toString()
-        .split(",")
-        .map((s: string) => s.trim())
-        .filter(Boolean)
+    try {
+      const response = await fetch(latestBlob.url, {
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
       
-      return {
-        id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
-        name: row.Nombre || row.Name || `Candidate ${index + 1}`,
-        skills,
-        experience: Number(row.Experiencia || row.Experience || 0),
-        education: row.Educacion || row.Educación || row.Education || "",
-        email: row.Email || row.Correo || ""
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`)
       }
-    })
-    
-    console.log(`Successfully loaded ${candidates.length} candidates from blob storage`)
-    return candidates
+
+      const arrayBuffer = await response.arrayBuffer()
+      
+      if (arrayBuffer.byteLength > 5 * 1024 * 1024) {
+        console.log('File too large, processing first 1000 candidates only')
+      }
+      
+      const workbook = XLSX.read(arrayBuffer)
+      const firstSheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[firstSheetName]
+      
+      const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
+      
+      const candidates = jsonData.map((row, index) => {
+        const skills = (row.Habilidades || row.Skills || "")
+          .toString()
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+        
+        return {
+          id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
+          name: row.Nombre || row.Name || `Candidate ${index + 1}`,
+          skills,
+          experience: Number(row.Experiencia || row.Experience || 0),
+          education: row.Educacion || row.Educación || row.Education || "",
+          email: row.Email || row.Correo || ""
+        }
+      })
+      
+      console.log(`Successfully loaded ${candidates.length} candidates from blob storage`)
+      return candidates.slice(0, 1000)
+      
+    } catch (fetchError) {
+      clearTimeout(timeoutId)
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.log('Blob fetch timeout, falling back to local files')
+      } else {
+        console.error('Error fetching from blob:', fetchError)
+      }
+      return []
+    }
 
   } catch (error) {
     console.error('Error loading candidates from blob storage:', error)
@@ -162,14 +185,6 @@ export async function POST(req: NextRequest) {
     const { jobDescription } = requestSchema.parse(body)
     
     const jobHash = generateJobDescriptionHash(jobDescription);
-    const candidateHash = 'default'; 
-    const cacheKey = `job-${jobHash}-${candidateHash}`;
-    
-    const cached = await getCacheHybrid(cacheKey)
-    if (cached) {
-      console.log('Cache hit:', cacheKey)
-      return NextResponse.json(cached)
-    }
     
     let candidates: Candidate[] = await loadCandidates();
     
@@ -200,23 +215,42 @@ export async function POST(req: NextRequest) {
           email: "michael.johnson@example.com"
         }
       ]
-    }    
+    }
     
-    const batchSize = 5
+    const candidateHash = crypto.createHash('md5')
+      .update(JSON.stringify(candidates.map(c => c.id).sort()))
+      .digest('hex')
+      .substring(0, 8);
+    
+    const cacheKey = `job-${jobHash}-${candidateHash}`;
+    
+    const cached = await getCacheHybrid(cacheKey)
+    if (cached) {
+      console.log('Cache hit:', cacheKey)
+      return NextResponse.json(cached)
+    }
+    
+    const maxCandidates = Math.min(candidates.length, 50)
+    const limitedCandidates = candidates.slice(0, maxCandidates)
+    
+    const batchSize = 3
     const batches = Array.from(
-      { length: Math.ceil(candidates.length / batchSize) },
-      (_, i) => candidates.slice(i * batchSize, (i + 1) * batchSize)
+      { length: Math.ceil(limitedCandidates.length / batchSize) },
+      (_, i) => limitedCandidates.slice(i * batchSize, (i + 1) * batchSize)
     )
     
-    const results = []
-    for (const batch of batches) {
-      const scored = await scoreCandidates(jobDescription, batch as Candidate[])
-      results.push(...scored)
-    }
+    console.log(`Processing ${limitedCandidates.length} candidates in ${batches.length} batches of ${batchSize}`)
+    
+    const batchPromises = batches.map(batch => 
+      scoreCandidates(jobDescription, batch as Candidate[])
+    )
+    
+    const batchResults = await Promise.all(batchPromises)
+    const results = batchResults.flat()
     
     const sorted = results.sort((a, b) => b.score - a.score).slice(0, 30)
     
-    await setCacheHybrid(cacheKey, sorted, 600)
+    await setCacheHybrid(cacheKey, sorted, 1800)
     
     return NextResponse.json(sorted)
   } catch (error) {
