@@ -32,7 +32,7 @@ const templateData = [
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), 'app', 'data', 'candidates.xlsx')
+    const filePath = path.join(process.cwd(), 'data', 'candidates.xlsx')
     
     if (fs.existsSync(filePath)) {
       const buffer = fs.readFileSync(filePath)
