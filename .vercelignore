@@ -1,0 +1,18 @@
+# Archivos que NO queremos ignorar (asegurar que se incluyan)
+!data/
+!data/**
+!public/
+!public/**
+
+# Archivos que sí queremos ignorar
+.git/
+node_modules/
+.next/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+__tests__/
+*.test.ts
+*.test.js
+coverage/ 

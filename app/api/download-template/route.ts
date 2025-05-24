@@ -32,10 +32,13 @@ const templateData = [
 
 export async function GET() {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'candidates.xlsx')
+    // Priorizar public/ para consistencia con la API de scoring
+    const publicPath = path.join(process.cwd(), 'public', 'candidates.xlsx')
+    const dataPath = path.join(process.cwd(), 'data', 'candidates.xlsx')
     
-    if (fs.existsSync(filePath)) {
-      const buffer = fs.readFileSync(filePath)
+    // Intentar primero desde public/
+    if (fs.existsSync(publicPath)) {
+      const buffer = fs.readFileSync(publicPath)
       
       const headers = new Headers()
       headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -47,6 +50,21 @@ export async function GET() {
       })
     }
     
+    // Luego intentar desde data/
+    if (fs.existsSync(dataPath)) {
+      const buffer = fs.readFileSync(dataPath)
+      
+      const headers = new Headers()
+      headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      headers.set('Content-Disposition', 'attachment; filename="plantilla_candidatos.xlsx"')
+      
+      return new NextResponse(buffer, { 
+        status: 200,
+        headers
+      })
+    }
+    
+    // Si no existe el archivo, generar uno dinámicamente
     const workbook = XLSX.utils.book_new()
     const worksheet = XLSX.utils.json_to_sheet(templateData)
 

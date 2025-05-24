@@ -26,51 +26,43 @@ function generateJobDescriptionHash(jobDescription: string): string {
 
 function loadExcelCandidates() {
   try {
-    const filePath = path.join(process.cwd(), 'app', 'data', 'candidates.xlsx')
+    const publicPath = path.join(process.cwd(), 'public', 'candidates.xlsx')
+    const dataPath = path.join(process.cwd(), 'data', 'candidates.xlsx')
     
-    console.log('Attempting to load file from:', filePath)
+    console.log('Attempting to load file from public:', publicPath)
     console.log('Current working directory:', process.cwd())
     console.log('Files in current directory:', fs.readdirSync(process.cwd()))
     
-    if (!fs.existsSync(filePath)) {
-      console.error('Excel file not found:', filePath)
+    let filePath = ''
+    
+    if (fs.existsSync(publicPath)) {
+      filePath = publicPath
+      console.log('File found in public directory:', filePath)
+    } else if (fs.existsSync(dataPath)) {
+      filePath = dataPath
+      console.log('File found in data directory:', filePath)
+    } else {
+      console.error('Excel file not found in any expected location')
       
       const alternativePaths = [
-        path.join(process.cwd(), 'data', 'candidates.xlsx'),
         path.join(process.cwd(), 'candidates.xlsx'),
-        './app/data/candidates.xlsx',
-        './data/candidates.xlsx'
+        './public/candidates.xlsx',
+        './data/candidates.xlsx',
+        './candidates.xlsx'
       ]
       
       for (const altPath of alternativePaths) {
         console.log('Trying alternative path:', altPath)
         if (fs.existsSync(altPath)) {
-          const workbook = XLSX.readFile(altPath)
-          const firstSheetName = workbook.SheetNames[0]
-          const worksheet = workbook.Sheets[firstSheetName]
-          
-          const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
-          
-          return jsonData.map((row, index) => {
-            const skills = (row.Habilidades || row.Skills || "")
-              .toString()
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter(Boolean)
-            
-            return {
-              id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
-              name: row.Nombre || row.Name || `Candidate ${index + 1}`,
-              skills,
-              experience: Number(row.Experiencia || row.Experience || 0),
-              education: row.Educacion || row.Educación || row.Education || "",
-              email: row.Email || row.Correo || ""
-            }
-          })
+          filePath = altPath
+          break
         }
       }
       
-      return []
+      if (!filePath) {
+        console.log('No Excel file found, returning empty array')
+        return []
+      }
     }
     
     const workbook = XLSX.readFile(filePath)
