@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file type
     const isExcel = file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
                     file.type === "application/vnd.ms-excel" ||
                     file.name.endsWith('.xlsx') ||
@@ -26,7 +25,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Upload to Vercel Blob
     const blob = await put(`candidates/${file.name}`, file, {
       access: 'public',
       addRandomSuffix: false,
