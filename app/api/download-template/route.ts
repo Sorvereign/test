@@ -33,22 +33,30 @@ const templateData = [
 export async function GET() {
   try {
     const possiblePaths = [
-      path.join(process.cwd(), 'public', 'candidates.xlsx'),
-      path.join(process.cwd(), 'data', 'candidates.xlsx')
+      './public/candidates.xlsx',
+      './data/candidates.xlsx', 
+      'public/candidates.xlsx',
+      'data/candidates.xlsx',
+      path.resolve('./public/candidates.xlsx'),
+      path.resolve('./data/candidates.xlsx')
     ]
     
     for (const filePath of possiblePaths) {
-      if (fs.existsSync(filePath)) {
-        const buffer = fs.readFileSync(filePath)
-        
-        const headers = new Headers()
-        headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        headers.set('Content-Disposition', 'attachment; filename="plantilla_candidatos.xlsx"')
-        
-        return new NextResponse(buffer, { 
-          status: 200,
-          headers
-        })
+      try {
+        if (fs.existsSync(filePath)) {
+          const buffer = fs.readFileSync(filePath)
+          
+          const headers = new Headers()
+          headers.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          headers.set('Content-Disposition', 'attachment; filename="plantilla_candidatos.xlsx"')
+          
+          return new NextResponse(buffer, { 
+            status: 200,
+            headers
+          })
+        }
+      } catch {
+        continue
       }
     }
     

@@ -26,59 +26,59 @@ function generateJobDescriptionHash(jobDescription: string): string {
 
 function loadExcelCandidates() {
   try {
-    const primaryPaths = [
-      path.join(process.cwd(), 'public', 'candidates.xlsx'),
-      path.join(process.cwd(), 'data', 'candidates.xlsx'),
-    ]
-    
-    const alternativePaths = [
-      path.join(process.cwd(), 'app', 'data', 'candidates.xlsx'),
-      path.join(process.cwd(), 'candidates.xlsx'),
-      './app/data/candidates.xlsx',
+    const possiblePaths = [
+      './public/candidates.xlsx',
       './data/candidates.xlsx',
-      './public/candidates.xlsx'
+      'public/candidates.xlsx',
+      'data/candidates.xlsx',
+      path.resolve('./public/candidates.xlsx'),
+      path.resolve('./data/candidates.xlsx'),
+      path.resolve(process.cwd(), 'public/candidates.xlsx'),
+      path.resolve(process.cwd(), 'data/candidates.xlsx')
     ]
-    
-    const allPaths = [...primaryPaths, ...alternativePaths]
     
     console.log('Attempting to load Excel file...')
-    console.log('Current working directory:', process.cwd())
-    console.log('Files in current directory:', fs.readdirSync(process.cwd()))
+    console.log('Working directory:', process.cwd())
     
-    for (const filePath of allPaths) {
+    for (const filePath of possiblePaths) {
       console.log('Trying path:', filePath)
-      if (fs.existsSync(filePath)) {
-        console.log('File found at:', filePath)
-        
-        const workbook = XLSX.readFile(filePath)
-        const firstSheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[firstSheetName]
-        
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
-        
-        const candidates = jsonData.map((row, index) => {
-          const skills = (row.Habilidades || row.Skills || "")
-            .toString()
-            .split(",")
-            .map((s: string) => s.trim())
-            .filter(Boolean)
+      try {
+        if (fs.existsSync(filePath)) {
+          console.log('File found at:', filePath)
           
-          return {
-            id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
-            name: row.Nombre || row.Name || `Candidate ${index + 1}`,
-            skills,
-            experience: Number(row.Experiencia || row.Experience || 0),
-            education: row.Educacion || row.Educación || row.Education || "",
-            email: row.Email || row.Correo || ""
-          }
-        })
-        
-        console.log(`Successfully loaded ${candidates.length} candidates from Excel file`)
-        return candidates
+          const workbook = XLSX.readFile(filePath)
+          const firstSheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[firstSheetName]
+          
+          const jsonData = XLSX.utils.sheet_to_json(worksheet) as CandidateResponse[]
+          
+          const candidates = jsonData.map((row, index) => {
+            const skills = (row.Habilidades || row.Skills || "")
+              .toString()
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+            
+            return {
+              id: row.ID || row.Id || `C${String(index + 1).padStart(3, '0')}`,
+              name: row.Nombre || row.Name || `Candidate ${index + 1}`,
+              skills,
+              experience: Number(row.Experiencia || row.Experience || 0),
+              education: row.Educacion || row.Educación || row.Education || "",
+              email: row.Email || row.Correo || ""
+            }
+          })
+          
+          console.log(`Successfully loaded ${candidates.length} candidates from Excel file`)
+          return candidates
+        }
+      } catch (pathError) {
+        console.log(`Error checking path ${filePath}:`, pathError)
+        continue
       }
     }
     
-    console.error('Excel file not found in any of the attempted paths:', allPaths)
+    console.error('Excel file not found in any of the attempted paths:', possiblePaths)
     return []
     
   } catch (error) {
