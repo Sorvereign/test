@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 
-const processingJobs = new Map<string, {
-  status: 'processing' | 'completed' | 'error',
-  results?: any,
-  error?: string,
+interface JobStatus {
+  status: 'processing' | 'completed' | 'error'
+  results?: unknown
+  error?: string
   progress?: number
-}>()
+}
+
+const processingJobs = new Map<string, JobStatus>()
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(job)
 }
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   const jobId = crypto.randomUUID()
   
   processingJobs.set(jobId, {
