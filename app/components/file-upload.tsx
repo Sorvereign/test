@@ -61,6 +61,13 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
     try {
       setIsUploading(true)
       
+      // Check file size before upload (10MB limit)
+      const maxSize = 10 * 1024 * 1024
+      if (file.size > maxSize) {
+        setError(`File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB. Maximum allowed: 10MB.`)
+        return
+      }
+      
       const formData = new FormData()
       formData.append('file', file)
       
@@ -71,7 +78,12 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
       
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
+        if (response.status === 413) {
+          setError('File too large. Please use a file smaller than 10MB.')
+        } else {
+          throw new Error(errorData.error || 'Upload failed')
+        }
+        return
       }
       
       const result = await response.json()
@@ -79,6 +91,7 @@ export function FileUpload({ onFileProcessed, isLoading = false }: FileUploadPro
       
     } catch (err) {
       console.error("Error uploading to blob storage:", err)
+      setError("Error uploading to cloud storage. File was processed locally.")
     } finally {
       setIsUploading(false)
     }
