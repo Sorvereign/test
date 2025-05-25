@@ -1,6 +1,8 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { NextResponse } from 'next/server'
 
+export const maxDuration = 60; // 60 seconds timeout
+
 export async function POST(request: Request): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody
 
@@ -9,9 +11,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
-        // Generate a client token for the browser to upload the file
-        
-        // Validate that it's an Excel file based on the pathname
         const isExcel = pathname.endsWith('.xlsx') || pathname.endsWith('.xls')
         
         if (!isExcel) {
@@ -31,15 +30,12 @@ export async function POST(request: Request): Promise<NextResponse> {
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
-        // Get notified of client upload completion
         console.log('Candidates file upload completed:', {
           url: blob.url,
           pathname: blob.pathname
         })
 
         try {
-          // You could run additional logic here
-          // For example: validate the Excel content, send notifications, etc.
           if (tokenPayload) {
             const payload = JSON.parse(tokenPayload)
             console.log('Upload metadata:', payload)

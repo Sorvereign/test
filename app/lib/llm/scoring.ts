@@ -40,15 +40,17 @@ export async function scoreCandidates(
   candidates: Candidate[]
 ): Promise<ScoredCandidate[]> {
   
-  const userPrompt = `**Position to fill:**\n${jobDescription}\n\n**Candidates to evaluate:**\n${
-    candidates.map(c => 
-      `ID: ${c.id}\nSkills: ${c.skills?.join(', ')}\nExperience: ${c.experience} years\nEducation: ${c.education}`
-    ).join('\n\n')
-  }`
+  const userPrompt = `Job: ${jobDescription.substring(0, 200)}
+
+Candidates:
+${candidates.map(c => 
+  `${c.id}: ${c.skills?.slice(0, 5).join(', ')} | ${c.experience}y | ${c.education?.substring(0, 50)}`
+).join('\n')}`
 
   const createChatCompletion = () => openai.chat.completions.create({
     model: 'gpt-3.5-turbo-0125',
-    temperature: 0.3,
+    temperature: 0.1,
+    max_tokens: 800,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
@@ -57,7 +59,14 @@ export async function scoreCandidates(
   })
 
   try {
-    const response = await retryWithBackoff(createChatCompletion, 3)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('LLM timeout')), 15000) // 15 second timeout
+    )
+    
+    const response = await Promise.race([
+      retryWithBackoff(createChatCompletion, 2), // Reduce retries
+      timeoutPromise
+    ]) as Awaited<ReturnType<typeof createChatCompletion>>
     
     const content = response.choices[0]?.message.content || '{}'
     const parsed = JSON.parse(content)
@@ -66,7 +75,12 @@ export async function scoreCandidates(
     return validateAndMapResults(validated.candidates, candidates)
   } catch (error) {
     console.error('LLM Error:', error)
-    throw new Error('Error processing candidates')
+    
+    return candidates.map(candidate => ({
+      ...candidate,
+      score: calculateFallbackScore(jobDescription, candidate),
+      highlights: [`${candidate.experience} years experience`, `Skills: ${candidate.skills?.slice(0, 2).join(', ')}`]
+    }))
   }
 }
 
@@ -86,4 +100,19 @@ function validateAndMapResults(
       }
     })
     .filter(Boolean) as ScoredCandidate[]
+}
+
+function calculateFallbackScore(jobDescription: string, candidate: Candidate): number {
+  const jobKeywords = jobDescription.toLowerCase().split(/\s+/)
+  const candidateSkills = candidate.skills?.map(s => s.toLowerCase()) || []
+  
+  const matchingSkills = candidateSkills.filter(skill => 
+    jobKeywords.some(keyword => keyword.includes(skill) || skill.includes(keyword))
+  )
+  
+  const skillScore = (matchingSkills.length / Math.max(candidateSkills.length, 1)) * 60
+  const experienceScore = Math.min(candidate.experience * 3, 30)
+  const educationScore = candidate.education ? 10 : 0
+  
+  return Math.round(skillScore + experienceScore + educationScore)
 } 

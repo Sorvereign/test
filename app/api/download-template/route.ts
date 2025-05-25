@@ -30,6 +30,8 @@ const templateData = [
   }
 ]
 
+export const maxDuration = 30; // 30 seconds timeout
+
 export async function GET() {
   try {
     const possiblePaths = [

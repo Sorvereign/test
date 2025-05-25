@@ -8,6 +8,7 @@ import fs from 'fs'
 import crypto from 'crypto'
 import { list } from '@vercel/blob'
 import { Candidate, CandidateResponse } from '@/app/types'
+
 export const config = {
   api: {
     bodyParser: {
@@ -16,6 +17,8 @@ export const config = {
     responseLimit: false
   },
 }
+
+export const maxDuration = 60; // 60 seconds timeout
 
 const requestSchema = z.object({
   jobDescription: z.string().min(10).max(200),
@@ -145,11 +148,22 @@ function loadCandidatesFromLocal(): Candidate[] {
 }
 
 async function loadCandidates(): Promise<Candidate[]> {
+  const candidatesCacheKey = 'candidates-data'
+  const cached = await getCacheHybrid(candidatesCacheKey)
+  if (cached && Array.isArray(cached)) {
+    console.log('Using cached candidates data')
+    return cached as Candidate[]
+  }
+
   let candidates = await loadCandidatesFromBlob()
   
   if (candidates.length === 0) {
     console.log('No candidates found in blob storage, trying local files...')
     candidates = loadCandidatesFromLocal()
+  }
+  
+  if (candidates.length > 0) {
+    await setCacheHybrid(candidatesCacheKey, candidates, 1800)
   }
   
   return candidates
@@ -200,18 +214,30 @@ export async function POST(req: NextRequest) {
           email: "michael.johnson@example.com"
         }
       ]
-    }    
+    }
+
+    const limitedCandidates = candidates.slice(0, 50)
+    console.log(`Processing ${limitedCandidates.length} candidates (limited from ${candidates.length})`)
     
-    const batchSize = 5
+    const batchSize = 3
     const batches = Array.from(
-      { length: Math.ceil(candidates.length / batchSize) },
-      (_, i) => candidates.slice(i * batchSize, (i + 1) * batchSize)
+      { length: Math.ceil(limitedCandidates.length / batchSize) },
+      (_, i) => limitedCandidates.slice(i * batchSize, (i + 1) * batchSize)
     )
     
     const results = []
     for (const batch of batches) {
-      const scored = await scoreCandidates(jobDescription, batch as Candidate[])
-      results.push(...scored)
+      try {
+        const scored = await scoreCandidates(jobDescription, batch as Candidate[])
+        results.push(...scored)
+        
+        if (batches.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      } catch (error) {
+        console.error('Error scoring batch:', error)
+        continue
+      }
     }
     
     const sorted = results.sort((a, b) => b.score - a.score).slice(0, 30)
